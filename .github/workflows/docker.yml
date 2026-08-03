@@ -24,9 +24,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "24"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
 
       - name: Run tests
-        run: node --test tests/*.test.js
+        run: npm run check
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
