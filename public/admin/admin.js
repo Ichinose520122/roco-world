@@ -202,9 +202,10 @@ function createRow(image) {
   selection.append(checkbox);
 
   const picture = document.createElement("img");
-  picture.src = image.url;
   picture.alt = image.title || image.categoryName;
   picture.loading = "lazy";
+  picture.decoding = "async";
+  picture.src = image.thumbnailUrl || image.url;
 
   const main = document.createElement("div");
   main.className = "row-main";

@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
+import sharp from "sharp";
 import { installCache } from "../server/cache.js";
 import { D1Database } from "../server/db.js";
 import { createRouter } from "../server/routes.js";
@@ -34,8 +35,16 @@ test("VPS runtime supports schema, upload, gallery and image delivery", async ()
     const initialData = await initial.json();
     assert.ok(initialData.categories.length >= 7);
 
+    const pngBuffer = await sharp({
+      create: {
+        width: 1600,
+        height: 1000,
+        channels: 3,
+        background: { r: 244, g: 181, b: 194 },
+      },
+    }).png().toBuffer();
     const png = new File(
-      [Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10])],
+      [pngBuffer],
       "sample.png",
       { type: "image/png" },
     );
@@ -64,10 +73,27 @@ test("VPS runtime supports schema, upload, gallery and image delivery", async ()
     );
     assert.equal(image.status, 200);
     assert.equal(image.headers.get("Content-Type"), "image/png");
-    assert.deepEqual(
-      [...new Uint8Array(await image.arrayBuffer())],
-      [137, 80, 78, 71, 13, 10, 26, 10],
+    assert.deepEqual(Buffer.from(await image.arrayBuffer()), pngBuffer);
+
+    const thumbnail = await route.dispatch(
+      new Request(`http://localhost/gallery/${uploadData.image.id}?variant=thumbnail`),
+      env,
     );
+    assert.equal(thumbnail.status, 200);
+    assert.equal(thumbnail.headers.get("Content-Type"), "image/webp");
+    assert.match(thumbnail.headers.get("Cache-Control") || "", /immutable/);
+    const thumbnailMetadata = await sharp(Buffer.from(await thumbnail.arrayBuffer())).metadata();
+    assert.equal(thumbnailMetadata.width, 1024);
+    assert.equal(thumbnailMetadata.height, 640);
+
+    const preview = await route.dispatch(
+      new Request(`http://localhost/gallery/${uploadData.image.id}?variant=preview`),
+      env,
+    );
+    assert.equal(preview.status, 200);
+    const previewMetadata = await sharp(Buffer.from(await preview.arrayBuffer())).metadata();
+    assert.equal(previewMetadata.width, 1600);
+    assert.equal(previewMetadata.height, 1000);
 
     const dbResult = await db.prepare("UPDATE gallery_items SET title = ?1 WHERE id = ?2")
       .bind("updated", uploadData.image.id)

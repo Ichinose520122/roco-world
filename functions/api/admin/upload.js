@@ -14,6 +14,10 @@ import {
   validOptionalDateTime,
   validShotTime,
 } from "../../_lib/http.js";
+import {
+  createImageVariants,
+  variantObjectKey,
+} from "../../_lib/image-variants.js";
 
 const EXTENSIONS = Object.freeze({
   "image/webp": "webp",
@@ -27,7 +31,7 @@ export async function onRequestPost(context) {
   const originError = requireSameOrigin(context.request);
   if (originError) return originError;
 
-  let objectKey = "";
+  const storedKeys = [];
   try {
     await ensureSchema(context.env.DB);
     const form = await context.request.formData();
@@ -55,11 +59,35 @@ export async function onRequestPost(context) {
     }
 
     const id = crypto.randomUUID();
-    objectKey = `gallery/${id}.${extension}`;
-    await context.env.GALLERY_BUCKET.put(objectKey, await file.arrayBuffer(), {
+    const objectKey = `gallery/${id}.${extension}`;
+    const original = Buffer.from(await file.arrayBuffer());
+    const variants = await createImageVariants(original);
+    const thumbnailKey = variantObjectKey(objectKey, "thumbnail");
+    const previewKey = variantObjectKey(objectKey, "preview");
+
+    await context.env.GALLERY_BUCKET.put(objectKey, original, {
       httpMetadata: { contentType },
       customMetadata: { galleryId: id, managedBy: "gallery-admin" },
     });
+    storedKeys.push(objectKey);
+    await context.env.GALLERY_BUCKET.put(thumbnailKey, variants.thumbnail.buffer, {
+      httpMetadata: { contentType: "image/webp" },
+      customMetadata: {
+        galleryId: id,
+        managedBy: "gallery-admin",
+        variant: "thumbnail",
+      },
+    });
+    storedKeys.push(thumbnailKey);
+    await context.env.GALLERY_BUCKET.put(previewKey, variants.preview.buffer, {
+      httpMetadata: { contentType: "image/webp" },
+      customMetadata: {
+        galleryId: id,
+        managedBy: "gallery-admin",
+        variant: "preview",
+      },
+    });
+    storedKeys.push(previewKey);
 
     const now = new Date().toISOString();
     await context.env.DB.prepare(
@@ -102,7 +130,8 @@ export async function onRequestPost(context) {
     return json({ ok: true, image: adminItem(row, categories) }, { status: 201 });
   } catch (error) {
     console.error(error);
-    if (objectKey) await context.env.GALLERY_BUCKET.delete(objectKey).catch(() => {});
+    await Promise.all(storedKeys.map((key) =>
+      context.env.GALLERY_BUCKET.delete(key).catch(() => {})));
     return apiError("上传失败", 500);
   }
 }

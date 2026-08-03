@@ -1,4 +1,7 @@
 import { ensureSchema } from "../_lib/db.js";
+import { variantObjectKey } from "../_lib/image-variants.js";
+
+const SUPPORTED_VARIANTS = new Set(["original", "thumbnail", "preview"]);
 
 export async function onRequestGet(context) {
   try {
@@ -7,8 +10,15 @@ export async function onRequestGet(context) {
 
     const requestUrl = new URL(context.request.url);
     const download = requestUrl.searchParams.get("download") === "1";
+    const requestedVariant = download
+      ? "original"
+      : String(requestUrl.searchParams.get("variant") || "original");
+    if (!SUPPORTED_VARIANTS.has(requestedVariant)) {
+      return new Response("Not found", { status: 404 });
+    }
     const url = new URL(requestUrl.pathname, requestUrl.origin);
     if (download) url.searchParams.set("download", "1");
+    if (requestedVariant !== "original") url.searchParams.set("variant", requestedVariant);
     const cache = caches.default;
     const cacheKey = new Request(url.toString(), { method: "GET" });
     const cached = await cache.match(cacheKey);
@@ -28,7 +38,15 @@ export async function onRequestGet(context) {
       .first();
     if (!row) return new Response("Not found", { status: 404 });
 
-    const object = await context.env.GALLERY_BUCKET.get(row.object_key);
+    const requestedObjectKey = requestedVariant === "original"
+      ? row.object_key
+      : variantObjectKey(row.object_key, requestedVariant);
+    let object = await context.env.GALLERY_BUCKET.get(requestedObjectKey);
+    let variantFallback = false;
+    if (!object && requestedVariant !== "original") {
+      object = await context.env.GALLERY_BUCKET.get(row.object_key);
+      variantFallback = Boolean(object);
+    }
     if (!object) return new Response("Not found", { status: 404 });
 
     const etag = object.httpEtag || object.etag;
@@ -39,8 +57,12 @@ export async function onRequestGet(context) {
     const headers = new Headers();
     object.writeHttpMetadata(headers);
     headers.set("Content-Type", headers.get("Content-Type") || row.content_type || "image/webp");
-    headers.set("Cache-Control", "public, max-age=31536000, immutable");
-    headers.set("CDN-Cache-Control", "public, max-age=31536000, immutable");
+    const cacheControl = variantFallback
+      ? "public, max-age=300"
+      : "public, max-age=31536000, immutable";
+    headers.set("Cache-Control", cacheControl);
+    headers.set("CDN-Cache-Control", cacheControl);
+    headers.set("Vary", "Accept-Encoding");
     headers.set("X-Content-Type-Options", "nosniff");
     if (download) {
       const extension = String(row.object_key || "").split(".").pop() || "image";

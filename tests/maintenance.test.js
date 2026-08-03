@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   mkdtempSync,
   mkdirSync,
+  existsSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -13,6 +14,9 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import sharp from "sharp";
+
+sharp.cache(false);
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -83,6 +87,83 @@ INSERT INTO gallery_items (
       "RIFF",
     );
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test("image backfill creates clear variants and index reset preserves friends", async () => {
+  const root = mkdtempSync(resolve(tmpdir(), "roco-vps-images-"));
+  const databasePath = resolve(root, "gallery.sqlite");
+  const storageRoot = resolve(root, "images");
+  const backupRoot = resolve(root, "backups");
+  const env = {
+    DATA_DIR: root,
+    DB_PATH: databasePath,
+    STORAGE_ROOT: storageRoot,
+    BACKUP_DIR: backupRoot,
+  };
+
+  try {
+    const database = new DatabaseSync(databasePath);
+    const migrations = [
+      "0001_gallery.sql",
+      "0002_categories.sql",
+      "0003_settings.sql",
+      "0004_friends_comments.sql",
+      "0005_performance.sql",
+    ].map((file) => readFileSync(resolve(ROOT, "migrations", file), "utf8")).join("\n");
+    database.exec(migrations);
+    const now = new Date().toISOString();
+    database.prepare(`INSERT INTO gallery_items (
+      id, object_key, category, title, comment, shot_at, tags_json,
+      content_type, size, is_pinned, pinned_until, is_featured, featured_until,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, '', '', ?, '[]', 'image/webp', 0, 0, NULL, 0, NULL, ?, ?)`)
+      .run("variant-test-1234", "gallery/variant-test-1234.webp", "lovely-ringo",
+        "2026-08-04 12:00:00", now, now);
+    database.prepare(`INSERT INTO gallery_friends (
+      id, display_name, normalized_name, student_id_hmac, is_active, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, 1, ?, ?)`)
+      .run("friend-test", "测试好友", "测试好友", "test-hmac", now, now);
+    database.close();
+
+    const galleryDirectory = resolve(storageRoot, "gallery");
+    mkdirSync(galleryDirectory, { recursive: true });
+    await sharp({
+      create: {
+        width: 3840,
+        height: 2160,
+        channels: 3,
+        background: { r: 100, g: 149, b: 237 },
+      },
+    }).webp({ quality: 80 }).toFile(resolve(galleryDirectory, "variant-test-1234.webp"));
+
+    const backfill = runScript("scripts/generate-image-variants.js", [], env);
+    assert.equal(backfill.status, 0, backfill.stderr || backfill.stdout);
+    const thumbnailPath = resolve(galleryDirectory, "variant-test-1234.thumbnail.webp");
+    const previewPath = resolve(galleryDirectory, "variant-test-1234.preview.webp");
+    assert.equal(existsSync(thumbnailPath), true);
+    assert.equal(existsSync(previewPath), true);
+    const thumbnail = await sharp(thumbnailPath).metadata();
+    const preview = await sharp(previewPath).metadata();
+    assert.equal(thumbnail.width, 1024);
+    assert.equal(thumbnail.height, 576);
+    assert.equal(preview.width, 2048);
+    assert.equal(preview.height, 1152);
+
+    const dryRun = runScript("scripts/reset-gallery-index.js", [], env);
+    assert.equal(dryRun.status, 0, dryRun.stderr || dryRun.stdout);
+    const confirmed = runScript("scripts/reset-gallery-index.js", ["--confirm"], env);
+    assert.equal(confirmed.status, 0, confirmed.stderr || confirmed.stdout);
+
+    const verified = new DatabaseSync(databasePath);
+    try {
+      assert.equal(verified.prepare("SELECT COUNT(*) AS count FROM gallery_items").get().count, 0);
+      assert.equal(verified.prepare("SELECT COUNT(*) AS count FROM gallery_friends").get().count, 1);
+    } finally {
+      verified.close();
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });

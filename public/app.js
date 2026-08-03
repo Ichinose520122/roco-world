@@ -4,6 +4,8 @@ const CONFIG = Object.freeze({
   galleryApi: "/api/gallery",
   friendSessionApi: "/api/friend/session",
 });
+const GALLERY_BATCH_SIZE = 12;
+const ABOVE_FOLD_IMAGES = 6;
 
 const state = {
   categories: [],
@@ -18,6 +20,7 @@ const state = {
   friendSessionExpiresAt: null,
   friendServiceAvailable: true,
   commentsByImage: new Map(),
+  renderLimit: GALLERY_BATCH_SIZE,
 };
 
 const elements = {
@@ -33,6 +36,8 @@ const elements = {
   sortBadge: document.querySelector("#sort-badge"),
   sortSelect: document.querySelector("#sort-select"),
   searchInput: document.querySelector("#search-input"),
+  galleryMore: document.querySelector("#gallery-more"),
+  loadMore: document.querySelector("#load-more"),
   lightbox: document.querySelector("#lightbox"),
   lightboxImage: document.querySelector("#lightbox-image"),
   lightboxPosition: document.querySelector("#lightbox-position"),
@@ -68,26 +73,16 @@ document.addEventListener("DOMContentLoaded", init);
 
 async function init() {
   bindControls();
-  const [galleryResult, sessionResult] = await Promise.allSettled([
-    requestJson(CONFIG.galleryApi),
-    requestJson(CONFIG.friendSessionApi, { cache: "no-store" }),
-  ]);
+  void loadFriendSession();
 
-  if (sessionResult.status === "fulfilled") {
-    applyFriendSession(sessionResult.value);
-  } else {
-    state.friendServiceAvailable = false;
-    console.warn(sessionResult.reason);
-  }
-  renderFriendState();
-
-  if (galleryResult.status === "rejected") {
-    console.error(galleryResult.reason);
-    showFatalError(galleryResult.reason.message);
+  let data;
+  try {
+    data = await requestJson(CONFIG.galleryApi);
+  } catch (error) {
+    console.error(error);
+    showFatalError(error.message);
     return;
   }
-
-  const data = galleryResult.value;
   state.categories = normalizeGalleryData(data);
   if (!state.categories.length) {
     showFatalError("图库中没有分类");
@@ -102,6 +97,16 @@ async function init() {
   renderTabs();
   renderGallery();
   openLinkedPhoto();
+}
+
+async function loadFriendSession() {
+  try {
+    applyFriendSession(await requestJson(CONFIG.friendSessionApi, { cache: "no-store" }));
+  } catch (error) {
+    state.friendServiceAvailable = false;
+    console.warn(error);
+  }
+  renderFriendState();
 }
 
 async function requestJson(url, options = {}) {
@@ -119,6 +124,7 @@ function normalizeHeroImage(image) {
   return {
     id: String(image.id),
     url: String(image.url),
+    previewUrl: String(image.previewUrl || image.url),
     title: image.title ? String(image.title) : "",
     categoryName: image.categoryName ? String(image.categoryName) : "",
   };
@@ -157,7 +163,7 @@ function renderHeroImage() {
     document.head.append(preload);
   }
   preload.fetchPriority = "high";
-  preload.href = image.url;
+  preload.href = image.previewUrl;
 
   elements.headerMedia.hidden = false;
   elements.header.classList.add("has-cover");
@@ -172,7 +178,7 @@ function renderHeroImage() {
     elements.headerMedia.hidden = true;
     elements.header.classList.remove("has-cover", "is-cover-ready");
   };
-  elements.headerCover.src = image.url;
+  elements.headerCover.src = image.previewUrl;
 }
 
 function normalizeGalleryData(data) {
@@ -194,6 +200,14 @@ function normalizeGalleryData(data) {
             pinned: Boolean(image.pinned),
             featured: Boolean(image.featured),
             url: String(image.url || `/gallery/${encodeURIComponent(image.id)}`),
+            thumbnailUrl: String(
+              image.thumbnailUrl
+              || `/gallery/${encodeURIComponent(image.id)}?variant=thumbnail`,
+            ),
+            previewUrl: String(
+              image.previewUrl
+              || `/gallery/${encodeURIComponent(image.id)}?variant=preview`,
+            ),
             categoryId: String(image.categoryId || category.id || `category-${categoryIndex + 1}`),
             categoryName: String(image.categoryName || category.name || "未命名分类"),
             friendCommentCount: Number(image.friendCommentCount || 0),
@@ -275,6 +289,7 @@ function renderTabs() {
 function selectCategory(categoryId) {
   if (state.activeCategoryId === categoryId) return;
   state.activeCategoryId = categoryId;
+  state.renderLimit = GALLERY_BATCH_SIZE;
   renderTabs();
   renderGallery();
 }
@@ -326,7 +341,9 @@ function renderGallery() {
   elements.grid.setAttribute("aria-busy", "false");
   state.visibleImages = getVisibleImages();
   elements.grid.replaceChildren();
-  state.visibleImages.forEach((image, index) => elements.grid.append(createImageCard(image, index)));
+  state.visibleImages
+    .slice(0, state.renderLimit)
+    .forEach((image, index) => elements.grid.append(createImageCard(image, index)));
 
   const count = state.visibleImages.length;
   const queryNote = state.query.trim() ? ` · 搜索“${state.query.trim()}”` : "";
@@ -334,6 +351,26 @@ function renderGallery() {
   elements.sortBadge.textContent = state.sortDirection === "desc" ? "时间倒序" : "时间正序";
   elements.empty.hidden = count !== 0;
   elements.grid.hidden = count === 0;
+  updateLoadMoreState();
+}
+
+function updateLoadMoreState() {
+  const remaining = Math.max(0, state.visibleImages.length - state.renderLimit);
+  elements.galleryMore.hidden = remaining === 0;
+  elements.loadMore.textContent = remaining > 0
+    ? `继续加载（剩余 ${remaining} 张）`
+    : "已加载全部";
+}
+
+function loadMoreImages() {
+  const start = state.renderLimit;
+  if (start >= state.visibleImages.length) return;
+  state.renderLimit = Math.min(state.visibleImages.length, start + GALLERY_BATCH_SIZE);
+  state.visibleImages
+    .slice(start, state.renderLimit)
+    .forEach((image, offset) =>
+      elements.grid.append(createImageCard(image, start + offset)));
+  updateLoadMoreState();
 }
 
 function createImageCard(image, index) {
@@ -346,10 +383,10 @@ function createImageCard(image, index) {
   imageButton.addEventListener("click", () => openLightbox(index));
 
   const picture = document.createElement("img");
-  picture.src = image.url;
+  const aboveFold = index < ABOVE_FOLD_IMAGES;
   picture.alt = image.title || `${image.categoryName}截图，拍摄于${formatTime(image.time)}`;
-  picture.loading = "lazy";
-  picture.fetchPriority = "low";
+  picture.loading = aboveFold ? "eager" : "lazy";
+  picture.fetchPriority = aboveFold ? "auto" : "low";
   picture.decoding = "async";
   picture.dataset.loading = "true";
   picture.addEventListener("load", () => delete picture.dataset.loading);
@@ -357,6 +394,7 @@ function createImageCard(image, index) {
     delete picture.dataset.loading;
     imageButton.classList.add("has-error");
   });
+  picture.src = image.thumbnailUrl;
 
   const viewMark = document.createElement("span");
   viewMark.className = "view-mark";
@@ -435,12 +473,26 @@ function makeSpan(text) {
 function bindControls() {
   elements.sortSelect.addEventListener("change", (event) => {
     state.sortDirection = event.target.value === "asc" ? "asc" : "desc";
+    state.renderLimit = GALLERY_BATCH_SIZE;
     renderGallery();
   });
+  let searchTimer = null;
   elements.searchInput.addEventListener("input", (event) => {
-    state.query = event.target.value;
-    renderGallery();
+    clearTimeout(searchTimer);
+    const query = event.target.value;
+    searchTimer = setTimeout(() => {
+      state.query = query;
+      state.renderLimit = GALLERY_BATCH_SIZE;
+      renderGallery();
+    }, 180);
   });
+  elements.loadMore.addEventListener("click", loadMoreImages);
+  if ("IntersectionObserver" in window) {
+    const loadMoreObserver = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) loadMoreImages();
+    }, { rootMargin: "600px 0px" });
+    loadMoreObserver.observe(elements.galleryMore);
+  }
   elements.friendEntry.addEventListener("click", openFriendDialog);
   elements.friendDialogClose.addEventListener("click", () => elements.friendDialog.close());
   elements.friendLoginForm.addEventListener("submit", submitFriendLogin);
@@ -519,7 +571,7 @@ function updateLightbox() {
     elements.lightboxImage.classList.remove("is-loading");
     elements.imageLoader.classList.remove("is-visible");
   };
-  elements.lightboxImage.src = image.url;
+  elements.lightboxImage.src = image.previewUrl;
   loadComments(image);
 }
 
@@ -727,9 +779,14 @@ function openLinkedPhoto() {
     || state.categories.find((item) => item.images.some((image) => image.id === imageId));
   if (!category) return;
   state.activeCategoryId = category.id;
+  state.renderLimit = GALLERY_BATCH_SIZE;
   renderTabs();
   renderGallery();
   const index = state.visibleImages.findIndex((image) => image.id === imageId);
+  if (index >= state.renderLimit) {
+    state.renderLimit = Math.ceil((index + 1) / GALLERY_BATCH_SIZE) * GALLERY_BATCH_SIZE;
+    renderGallery();
+  }
   if (index >= 0) openLightbox(index);
 }
 

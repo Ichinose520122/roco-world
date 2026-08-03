@@ -414,6 +414,31 @@ a {
   gap: 14px;
 }
 
+.gallery-more {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0 8px;
+}
+
+.gallery-more[hidden] {
+  display: none;
+}
+
+.gallery-more button {
+  padding: 10px 20px;
+  color: #674c55;
+  background: #fffaf8;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.gallery-more button:hover,
+.gallery-more button:focus-visible {
+  background: #f8e8e5;
+  border-color: #dca7b0;
+}
+
 .gallery-card,
 .skeleton-card {
   min-width: 0;

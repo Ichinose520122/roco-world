@@ -205,6 +205,7 @@ export function scheduleIsActive(enabled, until, now = new Date()) {
 }
 
 export function publicItem(row, now = new Date(), options = {}) {
+  const imageUrl = `/gallery/${encodeURIComponent(row.id)}`;
   const item = {
     id: row.id,
     title: row.title || "",
@@ -213,7 +214,9 @@ export function publicItem(row, now = new Date(), options = {}) {
     tags: safeTags(row.tags_json),
     pinned: scheduleIsActive(row.is_pinned, row.pinned_until, now),
     featured: scheduleIsActive(row.is_featured, row.featured_until, now),
-    url: `/gallery/${encodeURIComponent(row.id)}`,
+    url: imageUrl,
+    thumbnailUrl: `${imageUrl}?variant=thumbnail`,
+    previewUrl: `${imageUrl}?variant=preview`,
   };
   if (options.category) {
     item.categoryId = options.category.id;

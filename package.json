@@ -11,6 +11,11 @@
     "start": "node server/server.js",
     "check": "node --test tests/*.test.js",
     "backup": "node scripts/backup.js",
-    "import:d1": "node scripts/import-d1.js"
+    "import:d1": "node scripts/import-d1.js",
+    "images:backfill": "node scripts/generate-image-variants.js",
+    "gallery:reset-index": "node scripts/reset-gallery-index.js"
+  },
+  "dependencies": {
+    "sharp": "0.35.3"
   }
 }

@@ -5,7 +5,7 @@ function adminComment(row) {
   return {
     id: String(row.id),
     imageId: String(row.image_id),
-    imageUrl: `/gallery/${encodeURIComponent(row.image_id)}`,
+    imageUrl: `/gallery/${encodeURIComponent(row.image_id)}?variant=thumbnail`,
     imageTitle: row.image_title || "未命名瞬间",
     imageTime: row.shot_at,
     categoryName: row.category_name || "未分组",
