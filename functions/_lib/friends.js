@@ -140,7 +140,8 @@ export async function getFriendSession(context) {
        s.expires_at,
        s.last_used_at,
        f.id AS friend_id,
-       f.display_name
+       f.display_name,
+       f.is_verified
      FROM friend_sessions s
      JOIN gallery_friends f ON f.id = s.friend_id
      WHERE s.token_hash = ?1 AND s.expires_at > ?2 AND f.is_active = 1`,
@@ -156,12 +157,12 @@ export async function getFriendSession(context) {
   return {
     tokenHash,
     expiresAt: row.expires_at,
-    friend: { id: row.friend_id, displayName: row.display_name },
+    friend: { id: row.friend_id, displayName: row.display_name, verified: Boolean(row.is_verified) },
   };
 }
 
 export function publicFriend(friend) {
-  return friend ? { id: String(friend.id), displayName: String(friend.displayName) } : null;
+  return friend ? { id: String(friend.id), displayName: String(friend.displayName), verified: friend.verified === true } : null;
 }
 
 export async function loginIsBlocked(db, identityHash) {

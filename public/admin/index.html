@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex, nofollow" />
     <title>图库管理 · 一ノ瀬林檎的小洛克冒险之旅</title>
-    <link rel="stylesheet" href="./admin.css?v=20260716-friend-config" />
-    <script src="./admin.js?v=20260804-image-variants-v1" defer></script>
+    <link rel="stylesheet" href="./admin.css?v=20261019-friend-verification" />
+    <script src="./admin.js?v=20261019-friend-verification" defer></script>
   </head>
   <body>
     <header class="admin-header">
@@ -236,7 +236,7 @@
         <header>
           <div>
             <h2>好友管理</h2>
-            <p>好友使用游戏名称和学号登录；学号只保存 HMAC。</p>
+            <p>填写游戏 ID 和学号即可留言；新身份待认证，在下方勾选“已认证”并保存后才算确认。学号只保存 HMAC。</p>
           </div>
           <button class="close-button" type="button" data-close="friends-dialog" aria-label="关闭">×</button>
         </header>
@@ -254,7 +254,7 @@
           <input name="studentId" maxlength="80" placeholder="学号" required />
           <button class="primary" type="submit">添加好友</button>
         </form>
-        <p class="manager-hint">现有学号不会在后台重新显示；填写新学号并保存才会替换。</p>
+        <p class="manager-hint">现有好友保留已认证状态；新身份优先显示。后台添加的好友直接视为已认证。现有学号不会重新显示；填写新学号并保存才会替换。</p>
         <div class="manager-list friend-manager-list" id="friend-manager-list"></div>
       </section>
     </dialog>

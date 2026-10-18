@@ -471,3 +471,5 @@ dialog::backdrop { background: rgba(76, 49, 58, 0.55); backdrop-filter: blur(5px
   .manager-panel > header { align-items: stretch; flex-direction: column; }
   .manager-header-actions { justify-content: space-between; }
 }
+
+.friend-permissions { display: grid; gap: 6px; }

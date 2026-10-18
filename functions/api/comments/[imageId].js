@@ -6,6 +6,7 @@ function publicComment(row) {
   return {
     id: String(row.id),
     authorName: String(row.author_name),
+    authorVerified: Boolean(row.author_verified),
     content: String(row.content),
     createdAt: String(row.created_at),
   };
@@ -21,11 +22,13 @@ export async function onRequestGet(context) {
     const imageId = String(context.params.imageId || "");
     if (!await findImage(context.env.DB, imageId)) return apiError("照片不存在", 404);
     const rows = await context.env.DB.prepare(
-      `SELECT id, author_name, content, created_at,
+      `SELECT c.id, c.author_name, c.content, c.created_at,
+        COALESCE(f.is_verified, 0) AS author_verified,
         COUNT(*) OVER () AS total_count
-       FROM photo_comments
-       WHERE image_id = ?1
-       ORDER BY created_at DESC, id DESC
+       FROM photo_comments c
+       LEFT JOIN gallery_friends f ON f.id = c.friend_id
+       WHERE c.image_id = ?1
+       ORDER BY c.created_at DESC, c.id DESC
        LIMIT 100`,
     ).bind(imageId).all();
     return json({
@@ -89,6 +92,7 @@ export async function onRequestPost(context) {
     const row = {
       id,
       author_name: session.friend.displayName,
+      author_verified: session.friend.verified ? 1 : 0,
       content,
       created_at: now,
     };

@@ -224,6 +224,7 @@ function normalizeComments(comments) {
     .map((comment) => ({
       id: String(comment.id),
       authorName: String(comment.authorName || "好友"),
+      authorVerified: comment.authorVerified === true,
       content: String(comment.content || ""),
       createdAt: String(comment.createdAt || ""),
     }));
@@ -450,7 +451,7 @@ function createCardComments(image, index) {
   image.friendComments.slice(0, 2).forEach((comment) => {
     const line = document.createElement("p");
     const author = document.createElement("strong");
-    author.textContent = `${comment.authorName}：`;
+    author.textContent = `${comment.authorName} · ${comment.authorVerified ? "已认证" : "待认证"}：`;
     const content = document.createElement("span");
     content.textContent = comment.content;
     line.append(author, content);
@@ -622,7 +623,7 @@ function renderComments(imageId) {
     const article = document.createElement("article");
     const header = document.createElement("div");
     const author = document.createElement("strong");
-    author.textContent = comment.authorName;
+    author.textContent = `${comment.authorName} · ${comment.authorVerified ? "已认证" : "待认证"}`;
     const time = document.createElement("time");
     time.dateTime = comment.createdAt;
     time.textContent = formatCommentTime(comment.createdAt);
@@ -645,7 +646,7 @@ function renderComments(imageId) {
 
 function applyFriendSession(data) {
   state.friend = data.authenticated && data.friend
-    ? { id: String(data.friend.id), displayName: String(data.friend.displayName) }
+    ? { id: String(data.friend.id), displayName: String(data.friend.displayName), verified: data.friend.verified === true }
     : null;
   state.friendSessionExpiresAt = data.expiresAt || null;
   state.friendServiceAvailable = true;
@@ -654,16 +655,16 @@ function applyFriendSession(data) {
 function renderFriendState() {
   const loggedIn = Boolean(state.friend);
   elements.friendEntryLabel.textContent = loggedIn
-    ? `${state.friend.displayName} · 已登录`
+    ? `${state.friend.displayName} · ${state.friend.verified ? "已认证" : "待认证"}`
     : "好友登录";
   elements.friendEntry.classList.toggle("is-logged-in", loggedIn);
   elements.friendLoginForm.hidden = loggedIn;
   elements.friendSession.hidden = !loggedIn;
-  elements.friendSessionName.textContent = loggedIn ? `你好，${state.friend.displayName}` : "";
+  elements.friendSessionName.textContent = loggedIn ? `你好，${state.friend.displayName} · ${state.friend.verified ? "已认证" : "待认证"}` : "";
   elements.commentForm.hidden = !loggedIn;
   elements.commentsGuest.hidden = loggedIn;
-  elements.commentsLogin.textContent = loggedIn ? `${state.friend.displayName} · 已登录` : "好友登录";
-  elements.commentAs.textContent = loggedIn ? `以 ${state.friend.displayName} 的身份留言` : "";
+  elements.commentsLogin.textContent = loggedIn ? `${state.friend.displayName} · ${state.friend.verified ? "已认证" : "待认证"}` : "好友登录";
+  elements.commentAs.textContent = loggedIn ? `以 ${state.friend.displayName} 的身份留言（${state.friend.verified ? "已认证" : "待后台认证，可正常留言"}）` : "";
   if (!state.friendServiceAvailable && !loggedIn) {
     elements.commentsGuest.querySelector("p").textContent = "好友登录服务暂时不可用。";
   }
@@ -680,7 +681,7 @@ async function submitFriendLogin(event) {
   event.preventDefault();
   const submit = event.submitter;
   submit.disabled = true;
-  elements.friendAuthMessage.textContent = "正在确认好友身份…";
+  elements.friendAuthMessage.textContent = "正在登录留言身份…";
   elements.friendAuthMessage.classList.remove("is-error");
   try {
     const data = await requestJson(CONFIG.friendSessionApi, {

@@ -5,7 +5,7 @@ import {
 } from "./categories.js";
 
 const initialized = new WeakMap();
-const RUNTIME_SCHEMA_VERSION = "2026-07-performance-v1";
+const RUNTIME_SCHEMA_VERSION = "2026-10-friend-verification-v1";
 
 const TABLE_SQL = `CREATE TABLE IF NOT EXISTS gallery_items (
   id TEXT PRIMARY KEY,
@@ -134,6 +134,15 @@ async function initializeSchema(db) {
     db.prepare(COMMENT_UNREAD_INDEX_SQL),
     db.prepare(COMMENT_FRIEND_INDEX_SQL),
   ]);
+
+  const friendColumns = await db.prepare("PRAGMA table_info(gallery_friends)").all();
+  if (!(friendColumns.results || []).some((column) => column.name === "is_verified")) {
+    // Existing friends were entered by the owner and retain their trusted status.
+    await db.batch([
+      db.prepare("ALTER TABLE gallery_friends ADD COLUMN is_verified INTEGER NOT NULL DEFAULT 0"),
+      db.prepare("UPDATE gallery_friends SET is_verified = 1"),
+    ]);
+  }
 
   const now = new Date().toISOString();
   await db.batch(DEFAULT_CATEGORIES.map((category, index) => db.prepare(
@@ -274,19 +283,21 @@ export async function listRows(db, includeObjectKey = false) {
 export async function listPublicCommentSummaries(db, perImage = 2) {
   const limit = Math.max(1, Math.min(3, Number(perImage) || 2));
   const result = await db.prepare(
-    `SELECT image_id, id, author_name, content, created_at, total_count
+    `SELECT image_id, id, author_name, content, created_at, author_verified, total_count
      FROM (
        SELECT
-         image_id,
-         id,
-         author_name,
-         content,
-         created_at,
+         c.image_id,
+         c.id,
+         c.author_name,
+         c.content,
+         c.created_at,
+         COALESCE(f.is_verified, 0) AS author_verified,
          COUNT(*) OVER (PARTITION BY image_id) AS total_count,
          ROW_NUMBER() OVER (
-           PARTITION BY image_id ORDER BY created_at DESC, id DESC
+           PARTITION BY c.image_id ORDER BY c.created_at DESC, c.id DESC
          ) AS row_number
-       FROM photo_comments
+       FROM photo_comments c
+       LEFT JOIN gallery_friends f ON f.id = c.friend_id
      )
      WHERE row_number <= ?1
      ORDER BY image_id ASC, created_at DESC, id DESC`,
@@ -300,6 +311,7 @@ export async function listPublicCommentSummaries(db, perImage = 2) {
     summaries.get(row.image_id).items.push({
       id: String(row.id),
       authorName: String(row.author_name),
+      authorVerified: Boolean(row.author_verified),
       content: String(row.content),
       createdAt: String(row.created_at),
     });

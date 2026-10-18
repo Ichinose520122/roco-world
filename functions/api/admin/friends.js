@@ -11,6 +11,7 @@ function adminFriend(row) {
     id: String(row.id),
     displayName: String(row.display_name),
     active: Boolean(row.is_active),
+    verified: Boolean(row.is_verified),
     lastLoginAt: row.last_login_at || null,
     createdAt: row.created_at,
     commentCount: Number(row.comment_count || 0),
@@ -29,7 +30,7 @@ export async function onRequestGet(context) {
          (SELECT COUNT(*) FROM friend_sessions s
           WHERE s.friend_id = f.id AND s.expires_at > ?1) AS active_sessions
        FROM gallery_friends f
-       ORDER BY f.is_active DESC, f.display_name COLLATE NOCASE ASC, f.created_at ASC`,
+       ORDER BY f.is_verified ASC, f.is_active DESC, f.display_name COLLATE NOCASE ASC, f.created_at ASC`,
     ).bind(now).all();
     return json({
       ok: true,
@@ -65,13 +66,14 @@ export async function onRequestPost(context) {
     const now = new Date().toISOString();
     await context.env.DB.prepare(
       `INSERT INTO gallery_friends
-        (id, display_name, normalized_name, student_id_hmac, is_active, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6)`,
+        (id, display_name, normalized_name, student_id_hmac, is_active, is_verified, created_at, updated_at)
+       VALUES (?1, ?2, ?3, ?4, 1, 1, ?5, ?6)`,
     ).bind(id, displayName, normalizedName, studentIdHmac, now, now).run();
     const row = {
       id,
       display_name: displayName,
       is_active: 1,
+      is_verified: 1,
       last_login_at: null,
       created_at: now,
       comment_count: 0,
