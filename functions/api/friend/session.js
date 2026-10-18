@@ -48,7 +48,7 @@ export async function onRequestPost(context) {
     const body = await context.request.json();
     const displayName = cleanText(body.displayName, 40);
     const studentId = cleanText(body.studentId, 80);
-    if (!displayName || !studentId) return apiError("请输入游戏名称和学号");
+    if (!displayName || !studentId) return apiError("请输入游戏 ID 和学号");
 
     const identityHash = await hashLoginIdentity(context.request, context.env);
     if (await loginIsBlocked(context.env.DB, identityHash)) {
@@ -57,18 +57,34 @@ export async function onRequestPost(context) {
 
     const normalizedName = normalizeFriendName(displayName);
     const studentIdHmac = await hashStudentId(studentId, context.env);
-    const friend = await context.env.DB.prepare(
-      `SELECT id, display_name
-       FROM gallery_friends
-       WHERE normalized_name = ?1 AND student_id_hmac = ?2 AND is_active = 1`,
-    ).bind(normalizedName, studentIdHmac).first();
-    if (!friend) {
+    let friend = await context.env.DB.prepare(
+      `SELECT id, display_name, normalized_name, is_active, is_verified
+       FROM gallery_friends WHERE student_id_hmac = ?1`,
+    ).bind(studentIdHmac).first();
+    if (friend && (friend.normalized_name !== normalizedName || !friend.is_active)) {
       await recordLoginFailure(context.env.DB, identityHash);
-      return apiError("好友信息无法确认", 401);
+      return apiError("ID 与学号不匹配，或该身份已被停用", 401);
     }
 
-    await clearLoginFailures(context.env.DB, identityHash);
     const now = new Date().toISOString();
+    if (!friend) {
+      // Count new identities as attempts too, to limit public registration abuse.
+      await recordLoginFailure(context.env.DB, identityHash);
+      await context.env.DB.prepare(
+        `INSERT INTO gallery_friends
+          (id, display_name, normalized_name, student_id_hmac, is_active, is_verified, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, 1, 0, ?5, ?5)
+         ON CONFLICT(student_id_hmac) DO NOTHING`,
+      ).bind(`friend-${crypto.randomUUID()}`, displayName, normalizedName, studentIdHmac, now).run();
+      friend = await context.env.DB.prepare(
+        "SELECT id, display_name, normalized_name, is_active, is_verified FROM gallery_friends WHERE student_id_hmac = ?1",
+      ).bind(studentIdHmac).first();
+      if (!friend || friend.normalized_name !== normalizedName || !friend.is_active) {
+        return apiError("ID 与学号不匹配，或该身份已被停用", 401);
+      }
+    } else if (friend.is_verified) {
+      await clearLoginFailures(context.env.DB, identityHash);
+    }
     await context.env.DB.prepare(
       "UPDATE gallery_friends SET last_login_at = ?1, updated_at = ?2 WHERE id = ?3",
     ).bind(now, now, friend.id).run();
@@ -80,7 +96,7 @@ export async function onRequestPost(context) {
     return json({
       ok: true,
       authenticated: true,
-      friend: { id: friend.id, displayName: friend.display_name },
+      friend: publicFriend({ id: friend.id, displayName: friend.display_name, verified: Boolean(friend.is_verified) }),
       expiresAt: session.expiresAt,
     }, {
       headers: {

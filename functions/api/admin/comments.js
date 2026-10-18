@@ -10,6 +10,7 @@ function adminComment(row) {
     imageTime: row.shot_at,
     categoryName: row.category_name || "未分组",
     authorName: String(row.author_name),
+    authorVerified: Boolean(row.author_verified),
     content: String(row.content),
     read: Boolean(row.is_read),
     createdAt: String(row.created_at),
@@ -42,10 +43,12 @@ export async function onRequestGet(context) {
     const rows = await context.env.DB.prepare(
       `SELECT
          c.*,
+         COALESCE(f.is_verified, 0) AS author_verified,
          i.title AS image_title,
          i.shot_at,
          g.name AS category_name
        FROM photo_comments c
+       LEFT JOIN gallery_friends f ON f.id = c.friend_id
        JOIN gallery_items i ON i.id = c.image_id
        LEFT JOIN gallery_categories g ON g.id = i.category
        ORDER BY c.is_read ASC, c.created_at DESC, c.id DESC

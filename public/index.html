@@ -6,8 +6,8 @@
     <meta name="description" content="一ノ瀬林檎的小洛克冒险之旅" />
     <meta name="theme-color" content="#fff7f1" />
     <title>一ノ瀬林檎的小洛克冒险之旅</title>
-    <link rel="stylesheet" href="./style.css?v=20260804-image-variants-v1" />
-    <script src="./app.js?v=20260804-image-variants-v1" defer></script>
+    <link rel="stylesheet" href="./style.css?v=20261019-friend-verification" />
+    <script src="./app.js?v=20261019-friend-verification" defer></script>
   </head>
   <body>
     <header class="app-header">
@@ -148,7 +148,7 @@
               </form>
               <div class="comments-guest" id="comments-guest">
                 <p>登录好友身份后，就可以给这张照片留下小纸条。</p>
-                <button id="comments-guest-login" type="button">使用游戏名称和学号登录</button>
+                <button id="comments-guest-login" type="button">填写游戏 ID 和学号即可留言</button>
               </div>
             </section>
           </div>
@@ -169,14 +169,14 @@
 
         <form id="friend-login-form">
           <label>
-            <span>游戏名称</span>
+            <span>游戏 ID（名称）</span>
             <input name="displayName" maxlength="40" autocomplete="username" required />
           </label>
           <label>
             <span>学号</span>
             <input name="studentId" type="password" maxlength="80" autocomplete="current-password" required />
           </label>
-          <p>仅用于和林檎添加的好友名单匹配，学号不会以明文保存。</p>
+          <p>填写游戏 ID 和学号即可留言；林檎在后台认证后才显示为已认证。学号不会以明文保存。</p>
           <button type="submit">进入好友留言区</button>
         </form>
 

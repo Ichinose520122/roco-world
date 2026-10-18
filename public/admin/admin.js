@@ -772,11 +772,22 @@ function createFriendManagerRow(friend) {
   active.checked = friend.active;
   activeLabel.append(active, document.createTextNode("允许登录"));
 
+  const verifiedLabel = document.createElement("label");
+  verifiedLabel.className = "friend-active";
+  const verified = document.createElement("input");
+  verified.type = "checkbox";
+  verified.name = "verified";
+  verified.checked = friend.verified === true;
+  verifiedLabel.append(verified, document.createTextNode("已认证"));
+  const permissions = document.createElement("div");
+  permissions.className = "friend-permissions";
+  permissions.append(activeLabel, verifiedLabel);
+
   const meta = document.createElement("p");
   const loginText = friend.lastLoginAt
     ? `最近登录 ${formatDisplayTime(friend.lastLoginAt)}`
     : "尚未登录";
-  meta.textContent = `${friend.commentCount} 条留言 · ${friend.activeSessions} 个会话 · ${loginText}`;
+  meta.textContent = `${friend.verified ? "已认证" : "待认证"} · ${friend.commentCount} 条留言 · ${friend.activeSessions} 个会话 · ${loginText}`;
 
   const actions = document.createElement("div");
   actions.className = "manager-row-actions";
@@ -795,7 +806,7 @@ function createFriendManagerRow(friend) {
   remove.textContent = "删除";
   remove.addEventListener("click", () => deleteFriend(friend, remove));
   actions.append(save, revoke, remove);
-  form.append(name, studentId, activeLabel, meta, actions);
+  form.append(name, studentId, permissions, meta, actions);
   form.addEventListener("submit", (event) => saveFriend(event, friend));
   return form;
 }
@@ -841,6 +852,7 @@ async function saveFriend(event, friend) {
         displayName: form.displayName.value,
         studentId: form.studentId.value,
         active: form.active.checked,
+        verified: form.verified.checked,
       }),
     });
     await loadFriends();
@@ -931,7 +943,7 @@ function renderCommentManager() {
     content.className = "comment-manager-content";
     const heading = document.createElement("div");
     const author = document.createElement("strong");
-    author.textContent = comment.authorName;
+    author.textContent = `${comment.authorName} · ${comment.authorVerified ? "已认证" : "待认证"}`;
     const time = document.createElement("span");
     time.textContent = formatDisplayTime(comment.createdAt);
     heading.append(author, time);

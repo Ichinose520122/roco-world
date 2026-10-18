@@ -20,6 +20,10 @@ export async function onRequestPatch(context) {
       : cleanText(body.displayName, 40);
     if (!displayName) return apiError("游戏名称不能为空");
     const active = body.active === undefined ? Boolean(current.is_active) : Boolean(body.active);
+    if (body.verified !== undefined && typeof body.verified !== "boolean") {
+      return apiError("认证状态无效");
+    }
+    const verified = body.verified === undefined ? Boolean(current.is_verified) : body.verified;
     const newStudentId = cleanText(body.studentId, 80);
     const studentIdHmac = newStudentId
       ? await hashStudentId(newStudentId, context.env)
@@ -38,7 +42,8 @@ export async function onRequestPatch(context) {
          normalized_name = ?2,
          student_id_hmac = ?3,
          is_active = ?4,
-         updated_at = ?5
+         updated_at = ?5,
+         is_verified = ?7
        WHERE id = ?6`,
     ).bind(
       displayName,
@@ -47,12 +52,15 @@ export async function onRequestPatch(context) {
       active ? 1 : 0,
       now,
       id,
+      verified ? 1 : 0,
     ).run();
-    if (!active || body.revokeSessions === true) {
+    if (!active || newStudentId || body.revokeSessions === true) {
       await context.env.DB.prepare("DELETE FROM friend_sessions WHERE friend_id = ?1")
         .bind(id)
         .run();
     }
+    const galleryUrl = new URL("/api/gallery", context.request.url);
+    await caches.default.delete(new Request(galleryUrl.toString()));
     return json({ ok: true, friendId: id });
   } catch (error) {
     console.error(error);
@@ -79,6 +87,8 @@ export async function onRequestDelete(context) {
       context.env.DB.prepare("DELETE FROM friend_sessions WHERE friend_id = ?1").bind(id),
       context.env.DB.prepare("DELETE FROM gallery_friends WHERE id = ?1").bind(id),
     ]);
+    const galleryUrl = new URL("/api/gallery", context.request.url);
+    await caches.default.delete(new Request(galleryUrl.toString()));
     return json({ ok: true, deletedId: id });
   } catch (error) {
     console.error(error);
