@@ -68,12 +68,20 @@ export async function onRequestPost(context) {
 
     const now = new Date().toISOString();
     if (!friend) {
+      const knownName = await context.env.DB.prepare(
+        "SELECT id FROM gallery_friends WHERE normalized_name = ?1 LIMIT 1",
+      ).bind(normalizedName).first();
+      if (knownName) {
+        await recordLoginFailure(context.env.DB, identityHash);
+        return apiError("这个游戏 ID 已有账号，学号不匹配；请使用后台为该账号保存的学号", 401);
+      }
       // Count new identities as attempts too, to limit public registration abuse.
       await recordLoginFailure(context.env.DB, identityHash);
       await context.env.DB.prepare(
         `INSERT INTO gallery_friends
           (id, display_name, normalized_name, student_id_hmac, is_active, is_verified, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, 1, 0, ?5, ?5)
+         SELECT ?1, ?2, ?3, ?4, 1, 0, ?5, ?5
+         WHERE NOT EXISTS (SELECT 1 FROM gallery_friends WHERE normalized_name = ?3)
          ON CONFLICT(student_id_hmac) DO NOTHING`,
       ).bind(`friend-${crypto.randomUUID()}`, displayName, normalizedName, studentIdHmac, now).run();
       friend = await context.env.DB.prepare(

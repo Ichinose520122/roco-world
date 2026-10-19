@@ -757,6 +757,7 @@ function createFriendManagerRow(friend) {
   name.setAttribute("aria-label", `${friend.displayName}的游戏名称`);
   const studentId = document.createElement("input");
   studentId.name = "studentId";
+  studentId.autocomplete = "off";
   studentId.maxLength = 80;
   studentId.placeholder = state.friendAuthConfigured
     ? "新学号（不修改请留空）"
@@ -845,7 +846,7 @@ async function saveFriend(event, friend) {
   const form = event.currentTarget.elements;
   submit.disabled = true;
   try {
-    await request(`/api/admin/friends/${encodeURIComponent(friend.id)}`, {
+    const saved = await request(`/api/admin/friends/${encodeURIComponent(friend.id)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -856,7 +857,9 @@ async function saveFriend(event, friend) {
       }),
     });
     await loadFriends();
-    showFriendManagerMessage("好友资料已保存");
+    showFriendManagerMessage(saved.studentIdChanged
+      ? "新学号已保存并校验，旧登录状态已清除；请使用此处的游戏 ID 和新学号重新登录"
+      : "好友资料已保存，学号未变更");
   } catch (error) {
     if (error.message.includes("FRIEND_ID_SECRET")) {
       state.friendAuthConfigured = false;
