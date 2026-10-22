@@ -1,10 +1,10 @@
-FROM node:24-bookworm-slim AS dependencies
+FROM node:24.22.1-bookworm-slim AS dependencies
 
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
-FROM node:24-bookworm-slim
+FROM node:24.22.1-bookworm-slim
 
 WORKDIR /app
 COPY --from=dependencies --chown=node:node /app/node_modules ./node_modules
